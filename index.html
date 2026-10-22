@@ -1,0 +1,513 @@
+<title>Диагностика прогрева N52</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@600&display=swap">
+<style>
+/* Layout: phone-first job card for a coolant warm-up test; stages keep the service order, the log table scrolls on its own */
+:root {
+  --bg: #f1f4f6;
+  --surface: #ffffff;
+  --ink: #16212b;
+  --muted: #5a6672;
+  --line: #d4dce3;
+  --cold: #1d5f8f;
+  --cold-soft: #e1eef8;
+  --hot: #a8430a;
+  --hot-soft: #fbe9dc;
+  --stop: #b3261e;
+  --stop-soft: #fbe6e4;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0cf;
+  --font-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --font-body: "Golos Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161b; --surface: #182129; --ink: #e3e9ee; --muted: #95a2ad; --line: #2a3640;
+    --cold: #79b8e6; --cold-soft: #15293a; --hot: #f39a5c; --hot-soft: #3a2314;
+    --stop: #f2786c; --stop-soft: #3a1c19; --warn: #e8c060; --warn-soft: #332a10;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10161b; --surface: #182129; --ink: #e3e9ee; --muted: #95a2ad; --line: #2a3640;
+  --cold: #79b8e6; --cold-soft: #15293a; --hot: #f39a5c; --hot-soft: #3a2314;
+  --stop: #f2786c; --stop-soft: #3a1c19; --warn: #e8c060; --warn-soft: #332a10;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.55;
+  padding-inline: 16px;
+  padding-block: 24px 56px;
+}
+.wrap { max-width: 44rem; margin-inline: auto; display: flex; flex-direction: column; gap: 2rem; }
+
+header { display: flex; flex-direction: column; gap: 0.55rem; }
+.plate { font-family: var(--font-mono); font-size: 0.76rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+.plate span { white-space: nowrap; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.35rem, 5vw, 1.85rem); line-height: 1.2; margin: 0; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); }
+
+/* the subject's own scale: a cold-to-hot gauge band with the four N52 setpoints */
+.gauge { display: flex; flex-direction: column; gap: 0.35rem; }
+.gauge-bar { height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cold), var(--hot)); }
+.gauge-marks { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.86rem; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+
+nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+nav a { display: inline-block; font-size: 0.84rem; padding: 0.3rem 0.7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
+nav a:hover { border-color: var(--hot); }
+nav a:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.08rem; line-height: 1.3; margin: 0; text-wrap: balance; }
+h3 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.35; }
+section { display: flex; flex-direction: column; gap: 0.9rem; scroll-margin-top: 1rem; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: 0.9rem; }
+ul.plain, ol.plain { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.note { border-radius: 10px; padding: 0.8rem 1rem; font-size: 0.93rem; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; gap: 0.35rem; }
+.note.warn { background: var(--warn-soft); border-color: var(--warn); }
+.note.warn strong { color: var(--warn); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.95rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.card h3 .n { font-family: var(--font-mono); color: var(--hot); margin-right: 0.45rem; }
+
+.rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; counter-reset: r; }
+.rank li { counter-increment: r; display: grid; grid-template-columns: 1.9rem minmax(0, 1fr); gap: 0.7rem; align-items: start; }
+.rank li::before { content: counter(r); font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem; width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border-radius: 50%; background: var(--hot-soft); color: var(--hot); }
+
+.read { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.55rem; }
+.read div { border-left: 3px solid var(--line); padding-left: 0.75rem; }
+.read .ok { border-left-color: var(--cold); }
+.read .bad { border-left-color: var(--hot); }
+.read b { font-weight: 600; }
+
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 44rem; width: 100%; }
+th, td { text-align: left; padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; color: var(--muted); background: var(--bg); }
+td:first-child { font-family: var(--font-mono); }
+
+.branch { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.branch h3 .k { font-family: var(--font-display); color: var(--hot); margin-right: 0.45rem; }
+.branch dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+.branch dt { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.branch dd { margin: 0 0 0.25rem; }
+
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.checks label { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: 0.6rem; align-items: start; cursor: pointer; }
+.checks input { width: 1.1rem; height: 1.1rem; margin: 0.2rem 0 0; accent-color: var(--hot); }
+.checks input:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+.checks input:checked + span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+
+.phrase { background: var(--surface); border: 1px solid var(--hot); border-radius: 10px; padding: 1rem 1.05rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.phrase blockquote { margin: 0; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; }
+.phrase ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.phrase-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+button { font: inherit; font-size: 0.9rem; padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid var(--hot); background: var(--hot-soft); color: var(--ink); cursor: pointer; }
+button:hover { background: var(--surface); }
+button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+.copy-note { font-size: 0.85rem; color: var(--muted); }
+
+.stopbox { border: 1px solid var(--stop); background: var(--stop-soft); border-radius: 10px; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.stopbox h3 { color: var(--stop); }
+
+footer { font-size: 0.84rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.35rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+footer a { color: var(--hot); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="plate"><span>BMW 525xi E60 · 2006</span><span>N52B25 · xDrive · АКПП</span></div>
+    <h1>Медленный прогрев N52: что проверить в сервисе</h1>
+    <p class="lede">Для владельца и диагноста, визит 23 октября. Цель — найти причину измерениями, а не очередной заменой детали.</p>
+    <div class="gauge" aria-label="Целевые температуры N52 по режимам">
+      <div class="gauge-bar"></div>
+      <div class="gauge-marks"><span>80 °C высокий + термостат</span><span>95 °C высокий</span><span>105 °C обычный</span><span>112 °C ECO</span></div>
+    </div>
+    <ul class="legend">
+      <li>✅ факт из документации BMW</li>
+      <li>🔶 рабочая гипотеза</li>
+      <li>📏 нужно измерить</li>
+    </ul>
+  </header>
+
+  <nav aria-label="Разделы">
+    <ul>
+      <li><a href="#likely">Что вероятно</a></li>
+      <li><a href="#order">Порядок</a></li>
+      <li><a href="#stages">Как проверять</a></li>
+      <li><a href="#tree">Если → то</a></li>
+      <li><a href="#sib">Бюллетень</a></li>
+      <li><a href="#say">Фраза мастеру</a></li>
+      <li><a href="#ask">Что забрать</a></li>
+      <li><a href="#drive">Можно ли ездить</a></li>
+    </ul>
+  </nav>
+
+  <div class="note warn" role="note">
+    <strong>⚠️ До любого удаления ошибок и до прошивки</strong>
+    <p>Сохранить полный протокол ISTA со всеми ошибками DME и условиями их записи. Без этого теряется главная улика.</p>
+  </div>
+
+  <section aria-labelledby="sys-h">
+    <h2 id="sys-h">Как устроено охлаждение N52 — только для диагностики</h2>
+    <ul class="plain">
+      <li>✅ <b>Помпа электрическая</b>, со своим блоком управления. С DME связана цифровой линией. DME сама задаёт её производительность по нагрузке, режиму и температурам.</li>
+      <li>✅ На прогреве помпа может даже <b>останавливаться</b>, но только если обогрев салона не нужен и наружная температура в допустимом диапазоне. 🔶 В Карелии с включённой печкой этот режим, скорее всего, не используется.</li>
+      <li>✅ <b>Термостат с электроподогревом</b> стоит рядом с помпой. DME может подогревать его, и тогда он открывается раньше, чем открылся бы сам.</li>
+      <li>✅ <b>Два датчика:</b> на выходе из головки блока (температура двигателя) и на выходе радиатора.</li>
+      <li>✅ <b>Режимы:</b> 112 / 105 / 95 / 80 °C. При большой нагрузке 80–95 °C — норма. 🔶 Ненорма — когда в спокойной езде и на холостом двигатель долго не поднимается выше ~80 °C.</li>
+      <li>✅ <b>Отопитель</b> забирает тепло с первых минут. Есть теплообменник масло/антифриз. ⚠️ Схему контура АКПП именно для этого VIN смотреть в TIS/ISTA.</li>
+      <li>✅ <b>После вскрытия системы обязательна прокачка через помпу:</b> зажигание, печка на максимум, педаль газа в пол на 10 с, двигатель не запускать, около 12 минут.</li>
+    </ul>
+  </section>
+
+  <section id="likely" aria-labelledby="likely-h">
+    <h2 id="likely-h">1. Что наиболее вероятно</h2>
+    <ol class="rank">
+      <li><span>🔶 <b>Антифриз идёт через радиатор в обход закрытого термостата.</b> Возможные пути: внутренний переток в радиаторе (сценарий бюллетеня BMW), контур АКПП или новый основной термостат, который не закрывается. Эта версия первая: замена двух термостатов не помогла, а вентилятор включается уже при 80–90 °C.</span></li>
+      <li><span>🔶 <b>DME открывает термостат электрически слишком рано.</b> Неверная команда — или подогрев запитан помимо команды из‑за проводки.</span></li>
+      <li><span>🔶 <b>Датчик занижает показания</b>, или у датчика воздух после ремонта.</span></li>
+      <li><span>🔶 <b>Воздух в системе</b> после ремонта.</span></li>
+      <li><span><b>Частично может быть нормой:</b> на холостом в мороз печка на максимуме забирает больше тепла, чем даёт двигатель. Это отделяется тестом с печкой на минимуме.</span></li>
+    </ol>
+    <p class="sub">Сами по себе маловероятны: помпа (при закрытом термостате она не может держать двигатель холодным) и вентилятор (без потока через радиатор он двигатель не охлаждает).</p>
+  </section>
+
+  <section aria-labelledby="why-h">
+    <h2 id="why-h">2. Почему ремонт не помог</h2>
+    <ul class="plain">
+      <li>Детали меняли, а путь антифриза не проверяли. Если антифриз обходит термостат, новый термостат ничего не изменит.</li>
+      <li>Если термостат открывают DME или проводка через подогрев, новый термостат откроется точно так же.</li>
+      <li>Универсальный OBD-сканер не видит BMW-коды DME. Не показывает он и температуру на выходе радиатора, и команды помпы и термостата.</li>
+      <li>Не исключены воздух после ремонта или неподходящая деталь.</li>
+    </ul>
+  </section>
+
+  <section id="order" aria-labelledby="order-h">
+    <h2 id="order-h">3. Порядок проверок</h2>
+    <ol class="rank">
+      <li><span><b>ISTA:</b> все ошибки DME, версия ПО, дата выпуска, бюллетень SI B12 07 06.</span></li>
+      <li><span><b>Подготовка:</b> уровень и концентрация антифриза, прокачка, утечки.</span></li>
+      <li><span><b>Холодный тест:</b> две температуры и все команды от холодного запуска.</span></li>
+      <li><span><b>Тепловизор:</b> куда реально идёт горячий антифриз.</span></li>
+      <li><span><b>Термостаты:</b> команда подогрева, напряжение на разъёме, номера деталей, контур АКПП.</span></li>
+      <li><span><b>Помпа:</b> заданная и фактическая работа, питание, связь.</span></li>
+      <li><span><b>Вентилятор:</b> при выключенном кондиционере.</span></li>
+      <li><span><b>ПО DME:</b> только после пунктов 1–7.</span></li>
+      <li><span><b>Контрольный тест</b> после ремонта.</span></li>
+    </ol>
+  </section>
+
+  <section id="stages" aria-labelledby="stages-h">
+    <h2 id="stages-h">4. Как мастер выполняет проверки</h2>
+
+    <div class="card">
+      <h3><span class="n">1</span>ISTA, не универсальный сканер</h3>
+      <ul class="plain">
+        <li>📏 Короткий тест всех блоков. Протокол сохранить до удаления ошибок.</li>
+        <li>📏 DME: текущие, сохранённые и спорадические ошибки с условиями записи.</li>
+        <li>Искать в первую очередь — <b>наличие этих кодов пока никто не проверял</b>: 2EF4 (механизм термостата); коды электрической помпы (группа 2E81–2E85, формулировки по ISTA); подогрев термостата; датчики температуры двигателя и радиатора; связь с помпой; вентилятор.</li>
+        <li>📏 Дата выпуска, ПО DME, I-Stufe (заводская и текущая).</li>
+        <li>📏 Найти в ISTA SI B12 07 06 (поиск по «2EF4») и проверить применимость.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">2</span>Холодный тест</h3>
+      <ul class="plain">
+        <li><b>Условия:</b> машина простояла ночь на улице, двигатель остыл до температуры воздуха. Не заводить заранее. Уровень и прокачка в норме.</li>
+        <li>📏 <b>Сразу после включения зажигания</b> температуры двигателя, радиатора, масла и наружная должны быть близки. Сильное расхождение — ветка Д.</li>
+        <li><b>Тест 1, холостой ход:</b> кондиционер выключен, обдув минимальный, температура LO. 20–25 минут плюс 5 минут холостого после прогрева.</li>
+        <li><b>Тест 2:</b> то же с печкой на максимуме.</li>
+        <li><b>Тест 3, дорога:</b> ровно 60–70 км/ч, 15–20 минут.</li>
+        <li><b>Запись:</b> каждые 2 минуты первые 20 минут, затем каждые 5 минут. В движении — каждые 3 минуты.</li>
+      </ul>
+      <div class="table-scroll" tabindex="0" aria-label="Шаблон записи прогрева">
+        <table>
+          <thead><tr><th>мин</th><th>T двигателя</th><th>T выход радиатора</th><th>разница</th><th>T наружная</th><th>T масла</th><th>помпа задано / факт</th><th>подогрев термостата</th><th>вентилятор</th><th>A/C, печка</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <tr><td>2</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <tr><td>4</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <tr><td>…</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="read">
+        <div class="ok"><b>Норма 🔶.</b> Двигатель растёт, выход радиатора почти не меняется — разница большая и растёт. Только у рабочей температуры выход радиатора резко поднимается: термостат открылся.</div>
+        <div class="bad"><b>Ранний поток через радиатор.</b> Выход радиатора растёт вслед за двигателем, когда тот ещё далеко от 80 °C. Разница маленькая.</div>
+        <div class="bad"><b>Ориентир бюллетеня</b> (сверить с текстом в ISTA): после прогрева и 5 минут холостого разница меньше ~20 °C — подозрение на поток через радиатор.</div>
+        <div><b>Радиатор холодный, двигатель всё равно греется медленно</b> — тепло уходит не через радиатор. Ветка Б.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">3</span>Тепловизор или контактные термометры</h3>
+      <ul class="plain">
+        <li>📏 Что мерить: вход радиатора и его бачок, сердцевину, бачок и патрубок выхода, патрубки контура АКПП и его термостата, патрубки печки, корпус основного термостата.</li>
+        <li><b>Ранний поток:</b> при холодном двигателе и нулевой команде подогрева греются сердцевина или бачок выхода.</li>
+        <li>🔶 <b>Термостат пропускает</b> — сердцевина прогревается полосами от входной стороны. <b>Переток внутри радиатора</b> — тёплый выходной бачок при в основном холодных трубках.</li>
+        <li>🔶 <b>Контур АКПП:</b> горячие патрубки при холодном масле АКПП. Решающий тест по решению мастера: кратковременно пережать клещами шланг подачи к теплообменнику АКПП.</li>
+        <li><b>Механика или команда:</b> команда = 0, а поток есть — механика. Команда > 0 на холодную при малой нагрузке — управление. Команды нет, а на разъёме подогрева напряжение — проводка.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">4</span>Помпа: управление, а не вращение</h3>
+      <ul class="plain">
+        <li>📏 Заданная и фактическая работа (если доступно), ошибки помпы и связи.</li>
+        <li>📏 Активация из ISTA на разных уровнях: отвечает ли помпа, меняется ли поток.</li>
+        <li>📏 Питание и масса под нагрузкой, линия связи, разъём (влага, окисление). Только штатными переходниками.</li>
+        <li>При закрытом термостате помпа не может удерживать двигатель на ~80 °C. Слабая помпа грозит скорее перегревом.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">5</span>Термостаты после замены</h3>
+      <ul class="plain">
+        <li>📏 Номера обоих установленных термостатов сверить с ETK по VIN.</li>
+        <li>📏 Основной: при нулевой команде выход радиатора холодный до рабочей температуры. На прогретом двигателе активация подогрева из ISTA — выход радиатора должен подняться. Сопротивление нагревателя — по TIS.</li>
+        <li>📏 Команда подогрева и напряжение на разъёме при холодном пуске.</li>
+        <li>📏 Контур АКПП: схема по TIS, правильность подключения, температуры входа и выхода.</li>
+        <li>❌ Повторно не менять без измерения.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">6</span>Вентилятор</h3>
+      <ul class="plain">
+        <li>✅ С включённым кондиционером вентилятор может работать при любой температуре — это норма. Проверять с выключенным A/C и выключенным обдувом стекла.</li>
+        <li>🔶 С выключенным кондиционером при 80–90 °C и малой нагрузке команда вентилятору обычно не нужна. Если она есть — выяснить почему.</li>
+        <li>Без потока через радиатор вентилятор двигатель не охлаждает. Это подсказка, но не причина.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">7</span>ПО DME</h3>
+      <ul class="plain">
+        <li>📏 Версия, I-Stufe, наличие обновления, применимость бюллетеня по дате выпуска.</li>
+        <li>Программировать, только если аппаратная часть в норме и записи показывают неверные команды, либо ISTA или бюллетень прямо предписывают обновление. С зарядным устройством на АКБ.</li>
+        <li>❌ Без измерений не прошивать.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">8</span>После ремонта</h3>
+      <ul class="plain">
+        <li>📏 Тот же холодный тест в сопоставимых условиях. Сравнить кривые «до» и «после».</li>
+        <li>📏 Ровная езда: двигатель выходит к высоким рабочим температурам и держится на них.</li>
+        <li>📏 Ошибки — сразу и через 2–3 дня.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="tree" aria-labelledby="tree-h">
+    <h2 id="tree-h">5. Если → то: что подтвердит причину</h2>
+
+    <div class="branch">
+      <h3><span class="k">А</span>Радиатор греется рано, команда подогрева = 0</h3>
+      <dl>
+        <dt>Значит</dt><dd>Антифриз обходит термостат: радиатор, контур АКПП или основной термостат.</dd>
+        <dt>Следующий тест</dt><dd>Тепловая картина, пережим контура АКПП, основной термостат на стенде в нагреваемой воде.</dd>
+        <dt>Подтверждение</dt><dd>Пережим убирает ранний нагрев — контур АКПП. Термостат на стенде пропускает — термостат. Термостат герметичен, контур исключён, выходной бачок тёплый при холодной сердцевине — радиатор. При сомнении радиатор проверить по секциям в радиаторной мастерской.</dd>
+        <dt>Ремонт</dt><dd>Только подтверждённый узел.</dd>
+        <dt>Проверка</dt><dd>Повтор холодного теста, разница температур в пределах ориентира, выход на рабочую температуру.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">Б</span>Радиатор холодный, а прогрев всё равно медленный</h3>
+      <dl>
+        <dt>Значит</dt><dd>Тепло уходит не через радиатор, либо занижены показания, либо в системе воздух.</dd>
+        <dt>Следующий тест</dt><dd>Сравнить тесты 1 и 2; контактный термометр у датчика против ISTA; температура масла; повторная прокачка.</dd>
+        <dt>Подтверждение</dt><dd>С печкой на минимуме прогрев нормальный — это нормальный отбор тепла. Показания расходятся с замером — датчик или цепь.</dd>
+        <dt>Ремонт</dt><dd>Датчик, разъём или проводка; прокачка; либо ничего, если это норма.</dd>
+        <dt>Проверка</dt><dd>Повтор теста.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">В</span>DME слишком рано открывает термостат</h3>
+      <dl>
+        <dt>Значит</dt><dd>Подогрев включается на холодную при малой нагрузке, или напряжение на подогреве есть без команды.</dd>
+        <dt>Следующий тест</dt><dd>Команда в ISTA плюс замер на разъёме; входные сигналы, на которые опирается DME.</dd>
+        <dt>Подтверждение</dt><dd>Напряжение без команды — проводка. Неверный входной сигнал — его источник. Входные сигналы верные — логика ПО.</dd>
+        <dt>Ремонт</dt><dd>Проводка, источник сигнала или ПО (только по бюллетеню или ISTA).</dd>
+        <dt>Проверка</dt><dd>Команда = 0 на холодную, прогрев нормальный.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">Г</span>Помпа работает не в заданном режиме</h3>
+      <dl>
+        <dt>Значит</dt><dd>Заданное и фактическое расходятся, есть коды помпы, питания или связи.</dd>
+        <dt>Следующий тест</dt><dd>Активация из ISTA, питание и масса под нагрузкой, линия связи, разъём.</dd>
+        <dt>Подтверждение</dt><dd>Питание и связь в норме, а помпа не выходит на режим — помпа. Просадка напряжения или плохая масса — цепь.</dd>
+        <dt>Ремонт</dt><dd>Цепь или помпа, затем прокачка по процедуре BMW.</dd>
+        <dt>Проверка</dt><dd>Заданное совпадает с фактическим. Холодный тест повторить отдельно.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">Д</span>Датчики неправдоподобны</h3>
+      <dl>
+        <dt>Значит</dt><dd>Врёт датчик двигателя или радиатора, или их цепь.</dd>
+        <dt>Следующий тест</dt><dd>Сравнение на холодную после ночи, контактный термометр, сопротивление по TIS, разъём и проводка.</dd>
+        <dt>Подтверждение</dt><dd>Заметное расхождение на холодную или скачки показаний.</dd>
+        <dt>Ремонт</dt><dd>Датчик, разъём или проводка.</dd>
+        <dt>Проверка</dt><dd>На холодную всё совпадает, кривые плавные.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">Е</span>Переток через радиатор или контур АКПП</h3>
+      <dl>
+        <dt>Значит</dt><dd>Как в ветке А.</dd>
+        <dt>Условие для ремонта</dt><dd>❌ Радиатор не менять, пока не исключены основной термостат и контур АКПП и пока нет характерной тепловой картины.</dd>
+      </dl>
+    </div>
+
+    <div class="branch">
+      <h3><span class="k">Ж</span>Всё исправно, но версия DME проблемная</h3>
+      <dl>
+        <dt>Значит</dt><dd>Аппаратная часть в норме, а ISTA или бюллетень указывают на обновление ПО для этой машины и этого симптома.</dd>
+        <dt>Подтверждение</dt><dd>Записи показывают неверные команды без аппаратной причины, машина попадает в бюллетень по дате выпуска.</dd>
+        <dt>Ремонт</dt><dd>Программирование DME через ISTA, с зарядным устройством.</dd>
+        <dt>Проверка</dt><dd>Холодный тест, чтение ошибок, контроль через несколько дней.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="sib" aria-labelledby="sib-h">
+    <h2 id="sib-h">6. Бюллетень SI B12 07 06</h2>
+    <ul class="plain">
+      <li>✅ <b>Подтверждено:</b> январь 2007, E60/E90 с N52, «Service Engine Soon: FC 2EF4 Map Thermostat», заменяет версию 05/2006.</li>
+      <li>⚠️ <b>Текст бюллетеня проверить не удалось.</b> ПО DME, переток в радиаторе и разница ~20 °C после прогрева и 5 минут холостого — это по описанию владельца. Мастер должен открыть бюллетень в ISTA и прочитать процедуру и диапазон дат выпуска.</li>
+      <li>🔶 <b>Почему новый термостат не спасает от перетока.</b> Термостат решает, пойдёт ли антифриз через радиатор. Если внутри радиатора нарушена перегородка, часть горячего антифриза находит путь, который термостат не перекрывает. Радиатор работает всегда, двигатель недогревается при исправном термостате.</li>
+      <li>❌ Радиатор «по бюллетеню» не менять, пока разница температур и тепловая картина не подтвердили переток.</li>
+    </ul>
+  </section>
+
+  <section id="say" aria-labelledby="say-h">
+    <h2 id="say-h">7. Что сказать мастеру</h2>
+    <div class="phrase">
+      <blockquote id="phrase-text">
+        <p>«У машины медленный прогрев после замены основного термостата и термостата АКПП. Прошу не менять детали, пока не будет измерений. Нужно:</p>
+        <ol>
+          <li>полная диагностика ISTA с сохранением всех ошибок DME до удаления, версия ПО и дата выпуска;</li>
+          <li>проверка применимости SI B12 07 06 (FC 2EF4);</li>
+          <li>холодный тест от холодного запуска с записью температур двигателя и выхода радиатора, наружной и масла, команд помпы, подогрева термостата и вентилятора — сначала с выключенной печкой и кондиционером;</li>
+          <li>проверка тепловизором, идёт ли антифриз через радиатор или контур АКПП раньше времени;</li>
+          <li>проверка помпы по заданной и фактической работе и по питанию.</li>
+        </ol>
+        <p>Радиатор, помпу, термостаты и прошивку — только после того, как измерения покажут конкретную причину».</p>
+      </blockquote>
+      <div class="phrase-actions">
+        <button type="button" id="copy-btn">Скопировать текст</button>
+        <span class="copy-note" id="copy-note" aria-live="polite"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="ask" aria-labelledby="ask-h">
+    <h2 id="ask-h">8. Что забрать из сервиса</h2>
+    <div class="card">
+      <ul class="checks">
+        <li><label><input type="checkbox" id="k1"><span>Полный отчёт ISTA с ошибками и условиями записи.</span></label></li>
+        <li><label><input type="checkbox" id="k2"><span>Таблица или графики прогрева: две температуры, наружная, масло — с отметками времени.</span></label></li>
+        <li><label><input type="checkbox" id="k3"><span>Разница двигатель − радиатор после прогрева и 5 минут холостого.</span></label></li>
+        <li><label><input type="checkbox" id="k4"><span>Команды помпы, подогрева термостата и вентилятора; заданная и фактическая работа помпы.</span></label></li>
+        <li><label><input type="checkbox" id="k5"><span>Тепловые снимки радиатора, патрубков и контура АКПП.</span></label></li>
+        <li><label><input type="checkbox" id="k6"><span>Заключение по радиатору и контуру АКПП: исправны или нет, и почему.</span></label></li>
+        <li><label><input type="checkbox" id="k7"><span>Номера установленных термостатов и сверка с ETK.</span></label></li>
+        <li><label><input type="checkbox" id="k8"><span>Версия ПО DME и решение по SI B12 07 06.</span></label></li>
+        <li><label><input type="checkbox" id="k9"><span>Обоснование диагноза: какое измерение его подтверждает.</span></label></li>
+      </ul>
+    </div>
+    <div class="note">
+      <strong>Без измерений сервис не должен:</strong>
+      <p>менять радиатор; снова менять основной термостат или термостат АКПП; менять помпу, датчики температуры, теплообменник АКПП или вентилятор; прошивать DME.</p>
+    </div>
+  </section>
+
+  <section id="drive" aria-labelledby="drive-h">
+    <h2 id="drive-h">9. Можно ли ездить</h2>
+    <p><b>Можно</b>, если температура не уходит выше нормы, нет предупреждений и антифриз не убывает. Недогрев сам по себе быстро двигатель не ломает. Но хуже греет печка и хуже обдув стёкол — следите за видимостью. Короткие поездки на холодном двигателе вредят маслу, поэтому не прогревайте машину подолгу на холостом.</p>
+    <div class="stopbox">
+      <h3>Остановиться и вызвать эвакуатор, если:</h3>
+      <ul class="plain">
+        <li>появилось предупреждение о температуре двигателя или стрелка ушла выше обычного;</li>
+        <li>падает уровень антифриза, видны потёки, пар или запах;</li>
+        <li>двигатель вдруг стал быстро и сильно греться — отказ электрической помпы может серьёзно повредить двигатель;</li>
+        <li>появилось сообщение о неисправности двигателя с ограничением мощности, или вентилятор постоянно ревёт на максимуме при горячем двигателе.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span>Основа: BMW Technical Training «New Generation 6-Cylinder N52» (охлаждение, режимы, помпа, прокачка); сводный список бюллетеней BMW (SI B12 07 06). Номера деталей, сопротивления, точные названия параметров и кодов — по VIN в ISTA/TIS/ETK.</span>
+    <span><a href="https://ia600902.us.archive.org/26/items/BMWTechnicalTrainingDocuments/ST501%20New%20Engine%20Technology%20%28Archive%201%29/04_N52%20Engine.pdf" target="_blank" rel="noopener">BMW Technical Training: N52</a></span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var KEY = "n52-warmup-checks";
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { saved = {}; }
+  document.querySelectorAll('.checks input[type="checkbox"]').forEach(function (box) {
+    if (saved[box.id]) box.checked = true;
+    box.addEventListener("change", function () {
+      saved[box.id] = box.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+
+  var btn = document.getElementById("copy-btn");
+  var note = document.getElementById("copy-note");
+  var quote = document.getElementById("phrase-text");
+  function plainText() {
+    var parts = [];
+    quote.querySelectorAll("p, li").forEach(function (el, i) {
+      var t = el.textContent.trim();
+      if (el.tagName === "LI") {
+        var idx = Array.prototype.indexOf.call(el.parentNode.children, el) + 1;
+        t = idx + ". " + t;
+      }
+      parts.push(t);
+    });
+    return parts.join("\n");
+  }
+  function selectQuote() {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(quote);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {}
+  }
+  btn.addEventListener("click", function () {
+    var done = function () { note.textContent = "Скопировано"; };
+    var fail = function () { selectQuote(); note.textContent = "Текст выделен — скопируйте вручную"; };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(plainText()).then(done, fail);
+      } else { fail(); }
+    } catch (e) { fail(); }
+  });
+})();
+</script>
